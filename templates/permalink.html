@@ -2,4 +2,7 @@
 
 {% block content %}
   {{post.render() | safe}}
+	<footer>
+		<p class="query">Queried {{ queried_ago }} seconds ago</p>
+	</footer>
 {% endblock %}

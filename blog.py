@@ -161,6 +161,19 @@ def top_post(update=False):
         memcache.set('time', cached_time)
     return data, cached_time
 
+def cached_post(post_id, update=False):
+    data = memcache.get(post_id)
+    if data is None or update:
+        key = db.Key.from_path('Post', int(post_id), parent=blog_key())
+        post = db.get(key)
+        cached_time = time.time()
+        data = {
+            'time': cached_time,
+            'post': post
+        }
+        memcache.set(post_id, data)
+    return data
+
 class BlogFront(BlogHandler):
     def get(self):
         # posts = greetings = Post.all().order('-created')
@@ -174,14 +187,16 @@ class BlogFront(BlogHandler):
 
 class PostPage(BlogHandler):
     def get(self, post_id):
-        key = db.Key.from_path('Post', int(post_id), parent=blog_key())
-        post = db.get(key)
+        # key = db.Key.from_path('Post', int(post_id), parent=blog_key())
+        # post = db.get(key)
+        data = cached_post(post_id)
+        post, queried_ago = data['post'], time.time() - data['time']
 
         if not post:
             self.error(404)
             return
         if self.format == 'html':
-            self.render("permalink.html", post = post)
+            self.render("permalink.html", post = post, queried_ago = int(queried_ago))
         else:
             self.render_json(post.as_dict())
 
