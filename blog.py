@@ -163,30 +163,46 @@ class Post(db.Model):
         return d
 
 
-def top_post(update=False):
-    data = memcache.get('data')
-    cached_time = memcache.get('time')
-    if data is None or update:
-        posts = greetings = Post.all().order('-created')
-        data = list(posts)
-        cached_time = time.time()
-        memcache.set('data', data)
-        memcache.set('time', cached_time)
-    return data, cached_time
+def age_set(key, val):
+    save_time = time.time()
+    memcache.set(key, (val, save_time))
 
 
-def cached_post(post_id, update=False):
-    data = memcache.get(post_id)
-    if data is None or update:
-        key = db.Key.from_path('Post', int(post_id), parent=blog_key())
-        post = db.get(key)
-        cached_time = time.time()
-        data = {
-            'time': cached_time,
-            'post': post
-        }
-        memcache.set(post_id, data)
-    return data
+def age_get(key):
+    r = memcache.get(key)
+    if r:
+        val, save_time = r
+        age = time.time() - save_time
+    else:
+        val, age = None, 0
+
+    return val, age
+
+
+def add_post(ip, post):
+    post.put()
+    get_posts(update=True)
+    return str(post.key().id())
+
+
+def get_post(update=False):
+    q = Post.all().order('-created').fetch(limit=10)
+    mc_key = 'BLOGS'
+
+    posts, age = age_get(mc_key)
+    if update or posts is None:
+        posts = list(q)
+        age_set(mc_key, posts)
+
+    return posts, age
+
+
+def age_str(age):
+    s = 'queried %s seconds ago'
+    age = int(age)
+    if age == 1:
+        s = s.replace('seconds', 'second')
+    return s % age
 
 
 class FlushCache(webapp2.RequestHandler):
@@ -200,13 +216,9 @@ class FlushCache(webapp2.RequestHandler):
 class BlogFront(BlogHandler):
 
     def get(self):
-        # posts = greetings = Post.all().order('-created')
-        posts, cached_time = top_post()
-        queried_ago = time.time() - cached_time
-
+        posts, age = get_post()
         if self.format == 'html':
-            self.render('front.html', posts=posts,
-                        queried_ago=int(queried_ago))
+            self.render('front.html', posts=posts, age=age_str(age))
         else:
             return self.render_json([p.as_dict() for p in posts])
 
@@ -214,17 +226,20 @@ class BlogFront(BlogHandler):
 class PostPage(BlogHandler):
 
     def get(self, post_id):
-        # key = db.Key.from_path('Post', int(post_id), parent=blog_key())
-        # post = db.get(key)
-        data = cached_post(post_id)
-        post, queried_ago = data['post'], time.time() - data['time']
+        post_key = 'POST_' + post_id
+
+        post, age = age_get(post_key)
+        if not post:
+            key = db.Key.from_path('Post', int(post_id), parent=blog_key())
+            post = db.get(key)
+            age_set(post_key, post)
+            age = 0
 
         if not post:
             self.error(404)
             return
         if self.format == 'html':
-            self.render("permalink.html", post=post,
-                        queried_ago=int(queried_ago))
+            self.render("permalink.html", post=post, age=age_str(age))
         else:
             self.render_json(post.as_dict())
 
