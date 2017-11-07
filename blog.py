@@ -90,7 +90,7 @@ class MainPage(BlogHandler):
 
 # user stuff
 def make_salt(length=5):
-    return ''.join(random.choice(letters) for x in xrange(length))
+    return ''.join(random.choice(letters) for x in range(length))
 
 
 def make_pw_hash(name, pw, salt=None):
@@ -181,7 +181,7 @@ def age_get(key):
 
 def add_post(ip, post):
     post.put()
-    get_posts(update=True)
+    get_post(update=True)
     return str(post.key().id())
 
 
